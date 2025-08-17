@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Entrada de Segurança – Gerador e Verificador de Senhas</title>
+  <style>
+    :root {
+      --bg: #0f172a;          /* slate-900 */
+      --panel: #111827;       /* gray-900 */
+      --soft: #1f2937;        /* gray-800 */
+      --text: #e5e7eb;        /* gray-200 */
+      --muted: #9ca3af;       /* gray-400 */
+      --primary: #3b82f6;     /* blue-500 */
+      --ok: #22c55e;          /* green-500 */
+      --warn: #f59e0b;        /* amber-500 */
+      --bad: #ef4444;         /* red-500 */
+      --ring: rgba(59,130,246,.35);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 80% -10%, #1e293b 0%, #0f172a 60%) no-repeat, var(--bg);
+      color: var(--text);
+      display: grid; place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(920px, 100%);
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 45px rgba(0,0,0,.45);
+      overflow: hidden;
+    }
+    .header {
+      padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,.08);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      background: linear-gradient(180deg, rgba(59,130,246,.15), rgba(59,130,246,0));
+    }
+    .header h1 { font-size: clamp(18px, 2.4vw, 22px); margin: 0; letter-spacing: .2px; }
+    .grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; padding: 20px; }
+    @media (max-width: 900px){ .grid { grid-template-columns: 1fr; } }
+
+    .section { background: var(--panel); border: 1px solid rgba(255,255,255,.06); border-radius: calc(var(--radius) - 8px); padding: 16px; }
+    .section h2 { margin: 0 0 10px; font-size: 16px; color: var(--muted); font-weight: 600; }
+
+    .field { display: grid; gap: 8px; margin: 12px 0; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    label { font-size: 14px; color: var(--muted); }
+
+    input[type="password"], input[type="text"], input[type="number"], .output {
+      width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08);
+      background: var(--soft); color: var(--text); outline: none; font-size: 15px;
+    }
+    input:focus { box-shadow: 0 0 0 4px var(--ring); border-color: var(--primary); }
+
+    .btn {
+      appearance: none; border: 1px solid rgba(255,255,255,.14); background: linear-gradient(180deg, rgba(59,130,246,.25), rgba(59,130,246,.15));
+      color: white; padding: 10px 14px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 14px;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .btn.secondary { background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.06)); }
+
+    .row.wrap { flex-wrap: wrap; }
+    .chip { font-size: 12px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: var(--muted); }
+
+    .meter { height: 10px; border-radius: 999px; background: rgba(255,255,255,.08); position: relative; overflow: hidden; }
+    .meter > i { position: absolute; inset: 0; width: 0%; background: var(--bad); transition: width .25s ease, background-color .25s ease; }
+
+    .tips { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+    .tips ul { margin: 6px 0 0 18px; }
+
+    .options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+
+    .small { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="card" role="region" aria-label="Entrada de Segurança">
+    <div class="header">
+      <h1>Entrada de Segurança • Gerador e Verificador de Senhas</h1>
+      <div class="row wrap">
+        <span class="chip" id="entropyChip" title="Estimativa de entropia">Entropia: 0 bits</span>
+        <span class="chip" id="timeChip" title="Estimativa de tempo de quebra por força bruta">Quebra: —</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Verificador -->
+      <section class="section" aria-labelledby="secVerificar">
+        <h2 id="secVerificar">Verificar senha</h2>
+        <div class="field">
+          <label for="senhaInput">Digite sua senha</label>
+          <div class="row" style="gap:8px; align-items: stretch;">
+            <input type="password" id="senhaInput" placeholder="●●●●●●●●" aria-describedby="forcaLabel" autocomplete="off" />
+            <button class="btn secondary" id="toggleMostrar" aria-pressed="false" aria-label="Mostrar senha">Mostrar</button>
+            <button class="btn" id="copyBtn" disabled>Copiar</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label id="forcaLabel">Força da senha</label>
+          <div class="meter" aria-hidden="true"><i id="meterBar"></i></div>
+          <div class="row" style="justify-content: space-between;">
+            <span id="forcaTexto" class="small">—</span>
+            <span id="requisitos" class="small"></span>
+          </div>
+          <p class="tips" id="dicas" style="display:none;">
+            Recomendações:
+            <ul id="listaDicas"></ul>
+          </p>
+        </div>
+      </section>
+
+      <!-- Gerador -->
+      <section class="section" aria-labelledby="secGerar">
+        <h2 id="secGerar">Gerar senha</h2>
+        <div class="field">
+          <label for="tamanho">Tamanho <span id="tamVal" class="small">12</span></label>
+          <input type="range" id="tamanho" min="8" max="64" value="12" />
+        </div>
+        <div class="field">
+          <label>Conjunto de caracteres</label>
+          <div class="options">
+            <label><input type="checkbox" id="useMin" checked /> Letras minúsculas (a-z)</label>
+            <label><input type="checkbox" id="useMai" checked /> Letras maiúsculas (A-Z)</label>
+            <label><input type="checkbox" id="useNum" checked /> Números (0-9)</label>
+            <label><input type="checkbox" id="useSym" checked /> Símbolos (!@#$…)</label>
+          </div>
+        </div>
+        <div class="row" style="justify-content: flex-start; gap:10px;">
+          <button class="btn" id="gerarBtn">Gerar senha</button>
+          <button class="btn secondary" id="copiarGerada" disabled>Copiar senha gerada</button>
+        </div>
+        <div class="field">
+          <label for="saida">Senha gerada</label>
+          <input id="saida" class="output" type="text" readonly placeholder="—" />
+        </div>
+      </section>
+    </div>
+
+    <div style="padding: 8px 16px 16px; text-align: right;">
+      <span class="small">Dica: combine comprimento ≥ 12 com todos os tipos de caracteres para obter “Fortíssima”.</span>
+    </div>
+  </div>
+
+  <script>
+    // Conjuntos de caracteres
+    const LOWER = 'abcdefghijklmnopqrstuvwxyz';
+    const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const DIGITS = '0123456789';
+    const SYMBOLS = '!@#$%^&*()-_=+[]{};:,.?/\\|';
+
+    // Utilidade: aleatório criptograficamente seguro
+    function cryptoRandomInt(max) {
+      const array = new Uint32Array(1);
+      window.crypto.getRandomValues(array);
+      return array[0] % max; // viés desprezível para max << 2^32
+    }
+
+    function pick(set) {
+      return set[cryptoRandomInt(set.length)];
+    }
+
+    function shuffleSecure(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = cryptoRandomInt(i + 1);
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function buildPool(opts){
+      let pool = '';
+      if (opts.min) pool += LOWER;
+      if (opts.mai) pool += UPPER;
+      if (opts.num) pool += DIGITS;
+      if (opts.sym) pool += SYMBOLS;
+      return pool;
+    }
+
+    function gerarSenha(tamanho, opts){
+      // Garante pelo menos um de cada selecionado
+      const requisitos = [];
+      if (opts.min) requisitos.push(pick(LOWER));
+      if (opts.mai) requisitos.push(pick(UPPER));
+      if (opts.num) requisitos.push(pick(DIGITS));
+      if (opts.sym) requisitos.push(pick(SYMBOLS));
+
+      const pool = buildPool(opts) || LOWER + UPPER + DIGITS + SYMBOLS; // fallback se nada marcado
+      const restante = Math.max(tamanho, 8) - requisitos.length;
+      const chars = requisitos.concat(Array.from({length: restante}, () => pick(pool)));
+      return shuffleSecure(chars).join('');
+    }
+
+    function estimarEntropia(pw){
+      if(!pw) return { bits: 0, pool: 0 };
+      let pool = 0;
+      if(/[a-z]/.test(pw)) pool += 26;
+      if(/[A-Z]/.test(pw)) pool += 26;
+      if(/[0-9]/.test(pw)) pool += 10;
+      if(/[^a-zA-Z0-9]/.test(pw)) pool += SYMBOLS.length;
+      const bits = Math.log2(Math.pow(pool || 1, pw.length));
+      return { bits, pool };
+    }
+
+    function tempoBruteForce(bits){
+      // Suposição: 10^9 tentativas/seg (1 bilhão/s) offline – ajustável
+      const guessesPerSec = 1e9;
+      const seconds = Math.pow(2, bits) / (2 * guessesPerSec); // média: metade do espaço
+      if (seconds < 1) return '<1s';
+      const units = [
+        ['s', 60], ['min', 60], ['h', 24], ['dias', 365/12], ['meses', 12], ['anos', 100], ['séculos', 10]
+      ];
+      let t = seconds; let i = 0; let label = 's';
+      for (const [u, f] of units){
+        label = u;
+        if (t < f) break;
+        t /= f; i++;
+      }
+      return `${t.toFixed(1)} ${label}`;
+    }
+
+    function avaliarSenha(pw){
+      const len = pw.length;
+      const hasLower = /[a-z]/.test(pw);
+      const hasUpper = /[A-Z]/.test(pw);
+      const hasDigit = /\d/.test(pw);
+      const hasSymbol = /[^a-zA-Z0-9]/.test(pw);
+      const classes = [hasLower, hasUpper, hasDigit, hasSymbol].filter(Boolean).length;
+
+      let score = 0; // 0..4
+      if (len >= 8) score++;
+      if (len >= 12) score++;
+      if (classes >= 3) score++;
+      if (len >= 14 && classes === 4) score++;
+
+      let label = 'Muito fraca';
+      if (score === 1) label = 'Fraca';
+      if (score === 2) label = 'Média';
+      if (score === 3) label = 'Forte';
+      if (score === 4) label = 'Fortíssima';
+
+      const faltas = [];
+      if (len < 12) faltas.push('aumente para 12+ caracteres');
+      if (!hasLower) faltas.push('adicione minúsculas');
+      if (!hasUpper) faltas.push('adicione maiúsculas');
+      if (!hasDigit) faltas.push('adicione números');
+      if (!hasSymbol) faltas.push('adicione símbolos');
+
+      const { bits } = estimarEntropia(pw);
+      return { score, label, faltas, bits };
+    }
+
+    // ---- DOM ----
+    const senhaInput = document.getElementById('senhaInput');
+    const meterBar = document.getElementById('meterBar');
+    const forcaTexto = document.getElementById('forcaTexto');
+    const requisitos = document.getElementById('requisitos');
+    const dicas = document.getElementById('dicas');
+    const listaDicas = document.getElementById('listaDicas');
+    const toggleMostrar = document.getElementById('toggleMostrar');
+    const copyBtn = document.getElementById('copyBtn');
+    const entropyChip = document.getElementById('entropyChip');
+    const timeChip = document.getElementById('timeChip');
+
+    const tamanho = document.getElementById('tamanho');
+    const tamVal = document.getElementById('tamVal');
+    const useMin = document.getElementById('useMin');
+    const useMai = document.getElementById('useMai');
+    const useNum = document.getElementById('useNum');
+    const useSym = document.getElementById('useSym');
+    const gerarBtn = document.getElementById('gerarBtn');
+    const saida = document.getElementById('saida');
+    const copiarGerada = document.getElementById('copiarGerada');
+
+    function atualizarMeter(){
+      const pw = senhaInput.value;
+      const { score, label, faltas, bits } = avaliarSenha(pw);
+      const widths = ['5%', '25%', '55%', '80%', '100%'];
+      meterBar.style.width = widths[score];
+      meterBar.style.background = [
+        'var(--bad)','var(--bad)','var(--warn)','var(--primary)','var(--ok)'
+      ][score];
+      forcaTexto.textContent = pw ? label : '—';
+
+      // Requisitos/dicas
+      requisitos.textContent = pw ? (faltas.length ? `Melhore: ${faltas.join(', ')}` : 'Boa composição!') : '';
+      listaDicas.innerHTML = '';
+      if (pw && faltas.length){
+        dicas.style.display = 'block';
+        for (const f of faltas){
+          const li = document.createElement('li'); li.textContent = f; listaDicas.appendChild(li);
+        }
+      } else {
+        dicas.style.display = 'none';
+      }
+
+      // Chips
+      entropyChip.textContent = `Entropia: ${bits.toFixed(1)} bits`;
+      timeChip.textContent = `Quebra: ${tempoBruteForce(bits)}`;
+
+      copyBtn.disabled = !pw;
+    }
+
+    senhaInput.addEventListener('input', atualizarMeter);
+
+    toggleMostrar.addEventListener('click', () => {
+      const show = senhaInput.type === 'password';
+      senhaInput.type = show ? 'text' : 'password';
+      toggleMostrar.textContent = show ? 'Ocultar' : 'Mostrar';
+      toggleMostrar.setAttribute('aria-pressed', String(show));
+      senhaInput.focus();
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(senhaInput.value); copyBtn.textContent = 'Copiado!'; setTimeout(()=>copyBtn.textContent='Copiar', 1200); } catch(e){ alert('Não foi possível copiar'); }
+    });
+
+    tamanho.addEventListener('input', () => { tamVal.textContent = tamanho.value; });
+
+    gerarBtn.addEventListener('click', () => {
+      const opts = { min: useMin.checked, mai: useMai.checked, num: useNum.checked, sym: useSym.checked };
+      if (!opts.min && !opts.mai && !opts.num && !opts.sym){
+        // se nada marcado, marque tudo
+        useMin.checked = useMai.checked = useNum.checked = useSym.checked = true;
+        opts.min = opts.mai = opts.num = opts.sym = true;
+      }
+      const pw = gerarSenha(parseInt(tamanho.value, 10), opts);
+      saida.value = pw;
+      copiarGerada.disabled = !pw;
+
+      // também pré-preenche no verificador
+      senhaInput.value = pw;
+      atualizarMeter();
+    });
+
+    copiarGerada.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(saida.value); copiarGerada.textContent = 'Copiado!'; setTimeout(()=>copiarGerada.textContent='Copiar senha gerada', 1200); } catch(e){ alert('Não foi possível copiar'); }
+    });
+
+    // inicial
+    atualizarMeter();
+  </script>
+</body>
+</html>
